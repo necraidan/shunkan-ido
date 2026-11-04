@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Modèles MediaPipe (téléchargés au premier lancement)
+models/
+
+# macOS
+.DS_Store

@@ -1,0 +1,22 @@
+[project]
+name = "shunkan-ido"
+version = "0.1.0"
+description = "Disparaissez de Zoom avec le geste de téléportation de Goku (瞬間移動)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "mediapipe>=0.10.14",
+    "opencv-python>=4.10",
+    "numpy>=1.26",
+    "pyvirtualcam>=0.11",
+]
+
+[project.scripts]
+shunkan-ido = "shunkan_ido.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shunkan_ido"]
