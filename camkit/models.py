@@ -1,8 +1,8 @@
 """Téléchargement et localisation des modèles MediaPipe.
 
-Les trois modèles (mains, visage, segmentation) pèsent environ 8 Mo.
+Les modèles (mains, visage, deux segmentations) pèsent environ 25 Mo.
 Ils sont téléchargés au premier lancement dans le dossier ``models/`` du projet
-ou, si le projet n'est pas lancé depuis son dépôt, dans ``~/.cache/shunkan-ido``.
+ou, si le projet n'est pas lancé depuis son dépôt, dans ``~/.cache/camkit``.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ MODELS = {
     "hand_landmarker.task": "hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
     "blaze_face_short_range.tflite": "face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite",
     "selfie_segmenter.tflite": "image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+    # Cheveux, peau du visage, peau du corps, vêtements séparés : pour le détourage du Golden Warrior.
+    "selfie_multiclass_256x256.tflite": "image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
 }
 
 
@@ -29,12 +31,12 @@ def models_dir() -> Path:
     repo_root = Path(__file__).resolve().parent.parent
     if (repo_root / "pyproject.toml").exists():
         return repo_root / "models"
-    return Path.home() / ".cache" / "shunkan-ido" / "models"
+    return Path.home() / ".cache" / "camkit" / "models"
 
 
 def cache_dir() -> Path:
     """Dossier de cache utilisateur (fond calibré, etc.)."""
-    return Path.home() / ".cache" / "shunkan-ido"
+    return Path.home() / ".cache" / "camkit"
 
 
 def ensure_models() -> dict[str, Path]:

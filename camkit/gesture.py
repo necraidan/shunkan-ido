@@ -1,7 +1,7 @@
-"""Détection des gestes : téléportation de Goku et transformation Super Saiyan.
+"""Détection des gestes partagés par Shunkan Idō et Golden Warrior.
 
 Téléportation : index et majeur serrés, posés sur le front.
-Super Saiyan : les deux poings serrés face à la caméra.
+Poings : les deux poings serrés face à la caméra (transformation Golden Warrior).
 
 Pour la téléportation :
 
@@ -52,8 +52,8 @@ class GestureDebug:
     hands: list[np.ndarray] = field(default_factory=list)  # (21, 2) en pixels
     posed: bool = False
     progress: float = 0.0  # 0..1 pendant le maintien (téléportation)
-    saiyan_posed: bool = False
-    saiyan_progress: float = 0.0
+    fists_posed: bool = False
+    fists_progress: float = 0.0
     face: tuple[float, float, float, float, float] | None = None  # x, y, w, h, y des yeux (pixels)
 
 
@@ -136,18 +136,18 @@ class HoldTrigger:
 
 
 class GestureDetector:
-    """Analyse chaque image et renvoie ``"teleport"``, ``"saiyan"`` ou ``None``."""
+    """Analyse chaque image et renvoie ``"teleport"``, ``"fists"`` ou ``None``."""
 
     def __init__(
         self,
         model_paths: dict[str, Path],
         hold: float = 0.3,
-        saiyan_hold: float = 0.5,
+        fists_hold: float = 0.5,
         loose: bool = False,
     ):
         self.loose = loose
         self._teleport = HoldTrigger(hold)
-        self._saiyan = HoldTrigger(saiyan_hold)
+        self._fists = HoldTrigger(fists_hold)
         self.debug = GestureDebug()
 
         self._hands = vision.HandLandmarker.create_from_options(
@@ -188,16 +188,16 @@ class GestureDetector:
             zone = forehead_zone(face, w, h, self.loose)
             d.forehead = zone
             posed = any(is_goku_pose(hand, zone, self.loose) for hand in d.hands)
-        saiyan = len(d.hands) == 2 and all(is_fist(hand) for hand in d.hands)
+        fists = len(d.hands) == 2 and all(is_fist(hand) for hand in d.hands)
 
-        d.posed, d.saiyan_posed = posed, saiyan
+        d.posed, d.fists_posed = posed, fists
         fired_teleport = self._teleport.update(posed, now)
-        fired_saiyan = self._saiyan.update(saiyan and not posed, now)
-        d.progress, d.saiyan_progress = self._teleport.progress, self._saiyan.progress
+        fired_fists = self._fists.update(fists and not posed, now)
+        d.progress, d.fists_progress = self._teleport.progress, self._fists.progress
         if fired_teleport:
             return "teleport"
-        if fired_saiyan:
-            return "saiyan"
+        if fired_fists:
+            return "fists"
         return None
 
     def close(self) -> None:

@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 import numpy as np
-from mediapipe.tasks.python import BaseOptions, vision
+
+from camkit.segment import Segmenter
 
 
 class Calibration:
@@ -87,20 +87,12 @@ class BackgroundPlate:
         self._border_small = cv2.resize(self._border.astype(np.uint8), (sw, sh), interpolation=cv2.INTER_NEAREST).astype(np.float32)
 
         self._prev_mask: np.ndarray | None = None
-        self._seg_cache: tuple[int, np.ndarray] | None = None
         self._prev_gain: np.ndarray | None = None
         self._noise_sigma = 0.0
         self._rng = np.random.default_rng()
         self._grain_bank, self._grain_unit = self._make_grain_bank(width, height)
 
-        self._segmenter = vision.ImageSegmenter.create_from_options(
-            vision.ImageSegmenterOptions(
-                base_options=BaseOptions(model_asset_path=str(model_paths["selfie_segmenter.tflite"])),
-                running_mode=vision.RunningMode.VIDEO,
-                output_confidence_masks=True,
-                output_category_mask=False,
-            )
-        )
+        self.segment = Segmenter(model_paths)
 
     # --- fond ---------------------------------------------------------------
 
@@ -226,17 +218,6 @@ class BackgroundPlate:
 
     # --- masque de la personne ------------------------------------------------
 
-    def segment(self, rgb: np.ndarray, ts_ms: int) -> np.ndarray:
-        """Confiance brute (H, W) du segmenteur, calculée une seule fois par image."""
-        if self._seg_cache is not None and self._seg_cache[0] == ts_ms:
-            return self._seg_cache[1]
-        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        result = self._segmenter.segment_for_video(image, ts_ms)
-        conf = np.asarray(result.confidence_masks[0].numpy_view())
-        conf = np.ascontiguousarray(conf[..., 0] if conf.ndim == 3 else conf, dtype=np.float32)
-        self._seg_cache = (ts_ms, conf)
-        return conf
-
     def person_mask(self, rgb: np.ndarray, ts_ms: int) -> np.ndarray:
         """Masque flottant (H, W) dans [0, 1] : 1 = personne, élargi pour l'effacement."""
         return self.refine_mask(self.segment(rgb, ts_ms))
@@ -265,4 +246,4 @@ class BackgroundPlate:
         self._prev_gain = None
 
     def close(self) -> None:
-        self._segmenter.close()
+        self.segment.close()

@@ -1,4 +1,4 @@
-"""Shunkan Idō : disparais de Zoom avec le geste de Goku, ou passe en Super Saiyan.
+"""Shunkan Idō : disparais de Zoom avec le geste de Goku, cumulable avec Golden Warrior.
 
 Boucle principale : webcam → détection du geste → compositing → caméra virtuelle OBS.
 """
@@ -9,20 +9,28 @@ import argparse
 import sys
 import time
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
+from camkit.camera import FrameSource, VirtualOutput, list_cameras
+from camkit.gesture import GestureDetector
+from camkit.models import cache_dir, ensure_models
+from camkit.segment import PersonMatte
+from camkit.sound import SoundPlayer
+
+from golden_warrior.effect import GoldenRenderer, GoldenState
+from golden_warrior.main import SOUNDS as GOLDEN_SOUNDS
+
 from . import __version__
 from .background import BackgroundPlate, Calibration
-from .camera import FrameSource, VirtualOutput, list_cameras
 from .effects import Phase, VanishState, compose
-from .gesture import GestureDetector
-from .models import cache_dir, ensure_models
-from .saiyan import SaiyanRenderer, SaiyanState
-from .sound import SoundPlayer
+
+SOUNDS = Path(__file__).resolve().parent
 
 WINDOW = "Shunkan Ido"
-HELP_KEYS = "[espace] téléportation  [s] Super Saiyan  [b] recalibrer le fond  [d] debug  [q] quitter"
+HELP_KEYS = "[espace] téléportation  [g] golden warrior  [b] recalibrer le fond  [d] debug  [q] quitter"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -36,7 +44,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--height", type=int, default=720)
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--hold", type=float, default=0.3, help="durée de maintien du geste en secondes (défaut : 0.3)")
-    p.add_argument("--saiyan-hold", type=float, default=0.5, help="durée de maintien des poings pour le Super Saiyan (défaut : 0.5)")
+    p.add_argument("--golden-hold", type=float, default=0.5, help="durée de maintien des poings pour Golden Warrior (défaut : 0.5)")
+    p.add_argument("--no-golden", action="store_true", help="désactive Golden Warrior (téléportation seule)")
     p.add_argument("--transition", type=float, default=0.45, help="durée de l'effet en secondes (défaut : 0.45)")
     p.add_argument("--countdown", type=float, default=5.0, help="compte à rebours avant la photo du fond (défaut : 5)")
     p.add_argument("--loose", action="store_true", help="geste plus tolérant (ignore annulaire et auriculaire)")
@@ -74,9 +83,9 @@ def draw_debug(img: np.ndarray, gesture: GestureDetector) -> None:
     w = img.shape[1]
     if d.progress > 0:
         cv2.rectangle(img, (20, 60), (20 + int((w - 40) * d.progress), 72), color, -1)
-    if d.saiyan_progress > 0:
-        cv2.rectangle(img, (20, 78), (20 + int((w - 40) * d.saiyan_progress), 90), (0, 215, 255), -1)
-    if d.saiyan_posed:
+    if d.fists_progress > 0:
+        cv2.rectangle(img, (20, 78), (20 + int((w - 40) * d.fists_progress), 90), (0, 215, 255), -1)
+    if d.fists_posed:
         for hand in d.hands:
             cv2.circle(img, (int(hand[9][0]), int(hand[9][1])), 22, (0, 215, 255), 3)
 
@@ -99,20 +108,27 @@ def main(argv: list[str] | None = None) -> int:
     models = ensure_models()
     source = FrameSource(args.camera, args.width, args.height, args.fps)
     output = VirtualOutput(args.width, args.height, args.fps, enabled=not args.no_virtual)
-    gesture = GestureDetector(models, hold=args.hold, saiyan_hold=args.saiyan_hold, loose=args.loose)
-    sound = SoundPlayer(enabled=not args.no_sound, volume=args.volume)
+    gesture = GestureDetector(models, hold=args.hold, fists_hold=args.golden_hold, loose=args.loose)
+    sound = SoundPlayer(SOUNDS, enabled=not args.no_sound, volume=args.volume)
+    golden_sound = SoundPlayer(GOLDEN_SOUNDS, enabled=not args.no_sound, volume=args.volume)
     background = BackgroundPlate(models, cache_dir() / "background.png", args.width, args.height)
     state = VanishState(transition=args.transition)
-    saiyan = SaiyanState()
-    saiyan_fx = SaiyanRenderer(args.width, args.height)
+    golden = GoldenState()
+    golden_fx = GoldenRenderer(args.width, args.height)
+    golden_matte = PersonMatte(models, args.width, args.height)
+
+    def transform(now: float) -> None:
+        if args.no_golden:
+            return
+        golden.toggle(now)
+        if golden.active:
+            golden_sound.play("golden")
+        else:
+            golden_sound.stop("golden")
 
     def teleport(now: float) -> None:
         state.toggle(now)
         sound.play("teleport")
-
-    def transform(now: float) -> None:
-        saiyan.toggle(now)
-        sound.play("saiyan" if saiyan.active else "saiyan_off")
 
     calibration: Calibration | None = None
     if args.reuse_background and background.load_cached():
@@ -146,15 +162,19 @@ def main(argv: list[str] | None = None) -> int:
                 event = gesture.update(rgb, now, ts_ms)
                 if event == "teleport":
                     teleport(now)
-                elif event == "saiyan":
+                elif event == "fists":
                     transform(now)
                 state.tick(now)
 
-                # Super Saiyan d'abord, sur l'image en direct ; il s'efface quand on disparaît.
-                level = saiyan.level(now) * (1.0 - vanish_amount(state, now))
+                # Golden Warrior d'abord, sur l'image en direct ; l'aura part avec toi quand tu disparais.
+                level = golden.level(now) * (1.0 - vanish_amount(state, now))
                 if level > 0.01:
-                    conf = background.segment(rgb, ts_ms)
-                    frame = saiyan_fx.render(frame, conf, gesture.debug.face, level, saiyan.flash(now), now)
+                    golden_matte.submit(rgb, ts_ms)
+                    matte = golden_matte.matte(frame)
+                else:
+                    golden_matte.reset()
+                    matte = None
+                frame = golden_fx.render(frame, matte, level, golden.flash(now), now)
 
                 mask = None
                 plate = None
@@ -168,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
                     out = frame
                 else:
                     out = compose(frame, plate if plate is not None else frame, mask, state, now, args.static)
-                mode = "  super saiyan" if saiyan.active else ""
+                mode = "  golden warrior" if golden.active else ""
                 hud.append(f"{state.phase.value}{mode}  {fps:.0f} fps")
 
             output.send(out)
@@ -189,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
                 break
             if key == ord(" ") and calibration is None:
                 teleport(now)
-            if key == ord("s") and calibration is None:
+            if key == ord("g") and calibration is None:
                 transform(now)
             if key == ord("b"):
                 calibration = Calibration(args.countdown, frames=30, now=now)
@@ -202,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         output.close()
         sound.close()
+        golden_sound.close()
+        golden_matte.close()
         source.release()
         gesture.close()
         background.close()

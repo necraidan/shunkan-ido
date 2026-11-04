@@ -15,7 +15,7 @@ La caméra virtuelle OBS n'est pas disponible.
      pour installer l'extension système.
   2. Autorise-la dans Réglages Système › Général › Ouverture et extensions
      › Extensions caméra › « OBS Virtual Camera ».
-  3. Relance shunkan-ido. Si ça ne marche toujours pas, redémarre le Mac.
+  3. Relance le programme. Si ça ne marche toujours pas, redémarre le Mac.
 
 En attendant, tu peux tester avec --no-virtual (aperçu seul).
 """
