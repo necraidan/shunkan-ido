@@ -30,7 +30,7 @@ from .effects import Phase, VanishState, compose
 SOUNDS = Path(__file__).resolve().parent
 
 WINDOW = "Shunkan Ido"
-HELP_KEYS = "[espace] téléportation  [g] golden warrior  [b] recalibrer le fond  [d] debug  [q] quitter"
+HELP_KEYS = "[espace] téléportation  [g] golden warrior  [b] recalibrer le fond  [d] debug  [h] texte  [q] quitter"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -91,10 +91,15 @@ def draw_debug(img: np.ndarray, gesture: GestureDetector) -> None:
 
 
 def draw_hud(img: np.ndarray, lines: list[str]) -> None:
+    # Bandeau sombre derrière le texte : avec OpenCV 5, un contour plus épais change la police
+    # (plus grasse et plus large) et ne se superpose plus au texte.
+    font, scale = cv2.FONT_HERSHEY_SIMPLEX, 0.65
+    width = max(cv2.getTextSize(line, font, scale, 1)[0][0] for line in lines) if lines else 0
+    band = img[8 : 20 + 28 * len(lines), 10 : 30 + width]
+    band[:] = (band * 0.45).astype(img.dtype)
     y = 30
     for line in lines:
-        cv2.putText(img, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 4, cv2.LINE_AA)
-        cv2.putText(img, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(img, line, (20, y), font, scale, (255, 255, 255), 1, cv2.LINE_AA)
         y += 28
 
 
@@ -137,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         calibration = Calibration(args.countdown, frames=30, now=time.monotonic())
 
     debug = False
+    show_text = True
     t0 = time.monotonic()
     fps_clock, fps_count, fps = time.monotonic(), 0, 0.0
     print(HELP_KEYS, file=sys.stderr)
@@ -202,7 +208,8 @@ def main(argv: list[str] | None = None) -> int:
             preview = out.copy()
             if debug:
                 draw_debug(preview, gesture)
-            draw_hud(preview, hud + [HELP_KEYS])
+            if show_text:
+                draw_hud(preview, hud + [HELP_KEYS])
             cv2.imshow(WINDOW, preview)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q") or key == 27:
@@ -215,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
                 calibration = Calibration(args.countdown, frames=30, now=now)
                 if state.phase is not Phase.VISIBLE:
                     state.phase = Phase.VISIBLE
+            if key == ord("h"):
+                show_text = not show_text
             if key == ord("d"):
                 debug = not debug
     except KeyboardInterrupt:

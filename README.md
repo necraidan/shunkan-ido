@@ -63,6 +63,7 @@ Un **compte à rebours de 5 s** démarre : **sors du champ**, le script photogra
 |        **`b`**        | `shunkan-ido` : recalibrer le fond (nouveau compte à rebours, sors du champ)                 |
 |        **`g`**        | Se transformer en guerrier doré / revenir à la normale                                       |
 |        **`d`**        | Mode debug : zone du front et doigts détectés, ou poings reconnus, avec la barre de maintien |
+|        **`h`**        | Masquer / afficher le texte de l'aperçu (Zoom ne le reçoit jamais) |
 | **`q`** / **`échap`** | Quitter                                                                                      |
 
 ---
